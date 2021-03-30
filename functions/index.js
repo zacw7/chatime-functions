@@ -1,0 +1,108 @@
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+// const { user } = require("firebase-functions/lib/providers/auth");
+admin.initializeApp();
+
+const db = admin.firestore();
+const candidates = new Map();
+
+db.settings({ignoreUndefinedProperties: true});
+
+// Create and Deploy Your First Cloud Functions
+// https://firebase.google.com/docs/functions/write-firebase-functions
+
+exports.sendMessage = functions.https.onCall((data, context) => {
+  const from = context.auth.uid || null;
+  const to = data.to || null;
+  const roomId = data.roomId || null;
+  const content = data.content;
+  // Authentication / user information is automatically added to the request.
+  // const uid = context.auth.uid;
+  // const name = context.auth.token.name || null;
+  // const picture = context.auth.token.picture || null;
+  // const email = context.auth.token.email || null;
+
+  if (from == null || to == null || roomId == null) {
+    return;
+  }
+
+  const path = "rooms/" + roomId + "/messages";
+  functions.logger.info("Message Path:" + path, {structuredData: true});
+  return db.collection(path).add({
+    "from": from,
+    "to": to,
+    "content": content,
+    "timestamp": admin.firestore.Timestamp.now(),
+  }).then((res) => {
+    functions.logger.info("Added message with ID: ", res.id);
+    // TODO - send notification
+  });
+});
+
+exports.subscribeTopic = functions.https.onCall((data, context) => {
+  // Topic passed from the client.
+  const topic = data.topic;
+  // Authentication / user information is automatically added to the request.
+  const uid = context.auth.uid;
+  const name = context.auth.token.name || null;
+  const picture = context.auth.token.picture || null;
+  const email = context.auth.token.email || null;
+
+  functions.logger.info("uid: " + uid + " ---> " + topic);
+
+  if (!candidates.has(topic) ||
+  candidates.get(topic).uid === uid ||
+  candidates.get(topic).timestamp < admin.firestore.Timestamp.now() - 60) {
+    functions.logger.info("No one is waiting");
+    candidates.set(topic, {
+      "uid": uid,
+      "timestamp": admin.firestore.Timestamp.now(),
+    });
+  } else {
+    const ruid = candidates.get(topic).uid;
+    functions.logger.info("Found someone: " + ruid);
+    candidates.delete(topic);
+    // create room
+    return admin.auth()
+        .getUser(ruid)
+        .then((userRecord) => {
+          db.collection("rooms").add({
+            "topic": topic,
+            "members": [{
+              "uid": uid,
+              "username": name,
+              "email": email,
+              "pictureUrl": picture,
+            },
+            {
+              "uid": ruid,
+              "username": userRecord.displayName,
+              "email": userRecord.email,
+              "pictureUrl": userRecord.photoURL,
+            }],
+          }).then((docRef) => {
+            const topicCondition = "'" + uid + "' in topics || '" +
+             ruid + "' in topics";
+            functions.logger.info("Room created: ", docRef.id, topicCondition);
+            admin.messaging().send({
+              data: {
+                roomId: docRef.id,
+              },
+              condition: topicCondition,
+            });
+          });
+        });
+  }
+});
+
+exports.unsubscribeTopic = functions.https.onCall((data, context) => {
+  // Topic passed from the client.
+  const topic = data.topic;
+  // Authentication / user information is automatically added to the request.
+  const uid = context.auth.uid;
+  functions.logger.info("uid: " + uid + " -x-> " + topic);
+  if (candidates.has(topic) && candidates.has(topic) === uid) {
+    candidates.delete(topic);
+  }
+});
+
