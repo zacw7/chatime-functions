@@ -11,6 +11,36 @@ db.settings({ignoreUndefinedProperties: true});
 // Create and Deploy Your First Cloud Functions
 // https://firebase.google.com/docs/functions/write-firebase-functions
 
+exports.createDriftBottle = functions.https.onCall((data, context) => {
+  const driftBottle = {};
+  driftBottle.creatorUid = context.auth.uid || null;
+  driftBottle.content = data.content || null;
+  driftBottle.createdAt = admin.firestore.Timestamp.now();
+  if (data.multipleReceivers) {
+    driftBottle.pickRemaining = 5;
+  } else {
+    driftBottle.pickRemaining = 1;
+  }
+  if (data.audioUrl) {
+    driftBottle.audioUrl = data.audioUrl;
+  }
+  if (data.photoUrl) {
+    driftBottle.photoUrl = data.photoUrl;
+  }
+  if (data.latitude && data.longitude) {
+    driftBottle.latitude = data.latitude;
+    driftBottle.longitude = data.longitude;
+  }
+  functions.logger.info("Creating Bottle: " + driftBottle,
+      {structuredData: true});
+  if (driftBottle.creatorUid == null || driftBottle.content == null) {
+    return;
+  }
+  return db.collection("bottles").add(driftBottle).then((res) => {
+    functions.logger.info("Added bottle with ID: ", res.id);
+  });
+});
+
 exports.sendMessage = functions.https.onCall((data, context) => {
   const from = context.auth.uid || null;
   const to = data.to || null;
