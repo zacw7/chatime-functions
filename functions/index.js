@@ -115,11 +115,6 @@ exports.createDriftBottle = functions.https.onCall((data, context) => {
   driftBottle.content = data.content || null;
   driftBottle.id = data.id || null;
   driftBottle.createdAt = admin.firestore.Timestamp.now();
-  if (data.multipleReceivers) {
-    driftBottle.pickRemaining = 5;
-  } else {
-    driftBottle.pickRemaining = 1;
-  }
   if (data.audioUrl) {
     driftBottle.audioUrl = data.audioUrl;
   }
