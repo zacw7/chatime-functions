@@ -46,6 +46,7 @@ exports.fetchDriftBottle = functions.https.onCall((data, context) => {
                   .doc(bottleId)
                   .set(bottle)
                   .then(() => {
+                    bottle.id = bottleId;
                     return bottle;
                   });
             });
