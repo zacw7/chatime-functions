@@ -1,3 +1,4 @@
+
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 
@@ -16,7 +17,10 @@ exports.fetchDriftBottle = functions.https.onCall((data, context) => {
     return;
   }
 
-  return db.collection("bottles").where("creatorUid", "!=", uid).limit(1)
+  return db
+      .collection("bottles")
+      .where("creatorUid", "!=", uid)
+      .limit(1)
       .get()
       .then((querySnapshot) => {
         if (querySnapshot.size == 0) {
@@ -30,13 +34,21 @@ exports.fetchDriftBottle = functions.https.onCall((data, context) => {
           bottle = doc.data();
         });
         // delete
-        return db.collection("bottles").doc(bottleId).delete().then(() => {
-          // add to user
-          const path = "users/" + uid + "/bottles";
-          return db.collection(path).doc(bottleId).set(bottle).then(() => {
-            return bottle;
-          });
-        });
+        return db
+            .collection("bottles")
+            .doc(bottleId)
+            .delete()
+            .then(() => {
+              // add to user
+              const path = "users/" + uid + "/bottles";
+              return db
+                  .collection(path)
+                  .doc(bottleId)
+                  .set(bottle)
+                  .then(() => {
+                    return bottle;
+                  });
+            });
       });
 });
 
@@ -62,11 +74,9 @@ exports.updateProfile = functions.https.onCall((data, context) => {
   }
 
   // update profile
-  admin
-      .auth()
-      .updateUser(uid, {
-        displayName: username,
-      });
+  admin.auth().updateUser(uid, {
+    displayName: username,
+  });
 
   db.collection("users").doc(uid).update({about: about});
 });
@@ -84,13 +94,17 @@ exports.getProfile = functions.https.onCall((data, context) => {
         user.email = userAuth.email;
         user.displayName = userAuth.displayName;
         user.photoUrl = userAuth.photoURL;
-        return db.collection("users").doc(uid).get().then((doc) => {
-          const userDb = doc.data();
-          user.about = userDb.about;
-          user.scores = userDb.scores;
-          functions.logger.info("return user: ", user);
-          return user;
-        });
+        return db
+            .collection("users")
+            .doc(uid)
+            .get()
+            .then((doc) => {
+              const userDb = doc.data();
+              user.about = userDb.about;
+              user.scores = userDb.scores;
+              functions.logger.info("return user: ", user);
+              return user;
+            });
       });
 });
 
@@ -98,6 +112,7 @@ exports.createDriftBottle = functions.https.onCall((data, context) => {
   const driftBottle = {};
   driftBottle.creatorUid = context.auth.uid || null;
   driftBottle.content = data.content || null;
+  driftBottle.id = data.id || null;
   driftBottle.createdAt = admin.firestore.Timestamp.now();
   if (data.multipleReceivers) {
     driftBottle.pickRemaining = 5;
@@ -114,13 +129,22 @@ exports.createDriftBottle = functions.https.onCall((data, context) => {
     driftBottle.latitude = data.latitude;
     driftBottle.longitude = data.longitude;
   }
-  functions.logger.info("Creating Bottle: " + driftBottle,
-      {structuredData: true});
+  functions.logger.info("Creating Bottle: " + driftBottle, {
+    structuredData: true,
+  });
   if (driftBottle.creatorUid == null || driftBottle.content == null) {
     return;
   }
-  return db.collection("bottles").add(driftBottle).then((res) => {
-    functions.logger.info("Added bottle with ID: ", res.id);
+  return db.collection("users").doc(driftBottle.creatorUid).update({
+    scores: admin.firestore.FieldValue.increment(30),
+  }).then(() => {
+    if (driftBottle.id == null) {
+      return db.collection("bottles").add(driftBottle);
+    } else {
+      return db.collection("bottles")
+          .doc(driftBottle.id)
+          .set(driftBottle);
+    }
   });
 });
 
@@ -141,15 +165,18 @@ exports.sendMessage = functions.https.onCall((data, context) => {
 
   const path = "rooms/" + roomId + "/messages";
   functions.logger.info("Message Path:" + path, {structuredData: true});
-  return db.collection(path).add({
-    "from": from,
-    "to": to,
-    "content": content,
-    "timestamp": admin.firestore.Timestamp.now(),
-  }).then((res) => {
-    functions.logger.info("Added message with ID: ", res.id);
-    // TODO - send notification
-  });
+  return db
+      .collection(path)
+      .add({
+        from: from,
+        to: to,
+        content: content,
+        timestamp: admin.firestore.Timestamp.now(),
+      })
+      .then((res) => {
+        functions.logger.info("Added message with ID: ", res.id);
+      // TODO - send notification
+      });
 });
 
 exports.subscribeTopic = functions.https.onCall((data, context) => {
@@ -163,47 +190,55 @@ exports.subscribeTopic = functions.https.onCall((data, context) => {
 
   functions.logger.info("uid: " + uid + " ---> " + topic);
 
-  if (!candidates.has(topic) ||
-  candidates.get(topic).uid === uid ||
-  candidates.get(topic).timestamp < admin.firestore.Timestamp.now() - 60) {
+  if (
+    !candidates.has(topic) ||
+    candidates.get(topic).uid === uid ||
+    candidates.get(topic).timestamp < admin.firestore.Timestamp.now() - 60
+  ) {
     functions.logger.info("No one is waiting");
     candidates.set(topic, {
-      "uid": uid,
-      "timestamp": admin.firestore.Timestamp.now(),
+      uid: uid,
+      timestamp: admin.firestore.Timestamp.now(),
     });
   } else {
     const ruid = candidates.get(topic).uid;
     functions.logger.info("Found someone: " + ruid);
     candidates.delete(topic);
     // create room
-    return admin.auth()
+    return admin
+        .auth()
         .getUser(ruid)
         .then((userRecord) => {
-          db.collection("rooms").add({
-            "topic": topic,
-            "members": [{
-              "uid": uid,
-              "username": name,
-              "email": email,
-              "pictureUrl": picture,
-            },
-            {
-              "uid": ruid,
-              "username": userRecord.displayName,
-              "email": userRecord.email,
-              "pictureUrl": userRecord.photoURL,
-            }],
-          }).then((docRef) => {
-            const topicCondition = "'" + uid + "' in topics || '" +
-             ruid + "' in topics";
-            functions.logger.info("Room created: ", docRef.id, topicCondition);
-            admin.messaging().send({
-              data: {
-                roomId: docRef.id,
-              },
-              condition: topicCondition,
-            });
-          });
+          db.collection("rooms")
+              .add({
+                topic: topic,
+                members: [
+                  {
+                    uid: uid,
+                    username: name,
+                    email: email,
+                    pictureUrl: picture,
+                  },
+                  {
+                    uid: ruid,
+                    username: userRecord.displayName,
+                    email: userRecord.email,
+                    pictureUrl: userRecord.photoURL,
+                  },
+                ],
+              })
+              .then((docRef) => {
+                const topicCondition =
+              "'" + uid + "' in topics || '" + ruid + "' in topics";
+                functions.logger.info("Room created: ",
+                    docRef.id, topicCondition);
+                admin.messaging().send({
+                  data: {
+                    roomId: docRef.id,
+                  },
+                  condition: topicCondition,
+                });
+              });
         });
   }
 });
