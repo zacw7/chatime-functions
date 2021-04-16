@@ -134,13 +134,19 @@ exports.createDriftBottle = functions.https.onCall((data, context) => {
   return db.collection("users").doc(driftBottle.creatorUid).update({
     scores: admin.firestore.FieldValue.increment(30),
   }).then(() => {
-    if (driftBottle.id == null) {
-      return db.collection("bottles").add(driftBottle);
-    } else {
-      return db.collection("bottles")
-          .doc(driftBottle.id)
-          .set(driftBottle);
-    }
+    return admin
+        .auth()
+        .getUser(driftBottle.creatorUid)
+        .then((userAuth) => {
+          driftBottle.creatorUsername = userAuth.displayName;
+          if (driftBottle.id == null) {
+            return db.collection("bottles").add(driftBottle);
+          } else {
+            return db.collection("bottles")
+                .doc(driftBottle.id)
+                .set(driftBottle);
+          }
+        });
   });
 });
 
