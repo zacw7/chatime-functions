@@ -1,8 +1,7 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-// const { user } = require("firebase-functions/lib/providers/auth");
-admin.initializeApp();
 
+admin.initializeApp();
 const db = admin.firestore();
 const candidates = new Map();
 
@@ -10,6 +9,36 @@ db.settings({ignoreUndefinedProperties: true});
 
 // Create and Deploy Your First Cloud Functions
 // https://firebase.google.com/docs/functions/write-firebase-functions
+
+exports.fetchDriftBottle = functions.https.onCall((data, context) => {
+  const uid = context.auth.uid || null;
+  if (uid == null) {
+    return;
+  }
+
+  return db.collection("bottles").where("creatorUid", "!=", uid).limit(1)
+      .get()
+      .then((querySnapshot) => {
+        if (querySnapshot.size == 0) {
+          return;
+        }
+        let bottle;
+        let bottleId;
+
+        querySnapshot.forEach((doc) => {
+          bottleId = doc.id;
+          bottle = doc.data();
+        });
+        // delete
+        return db.collection("bottles").doc(bottleId).delete().then(() => {
+          // add to user
+          const path = "users/" + uid + "/bottles";
+          return db.collection(path).doc(bottleId).set(bottle).then(() => {
+            return bottle;
+          });
+        });
+      });
+});
 
 exports.addUserRecord = functions.auth.user().onCreate((user) => {
   const record = {
@@ -64,15 +93,6 @@ exports.getProfile = functions.https.onCall((data, context) => {
         });
       });
 });
-
-
-// exports.fetchDriftBottle = functions.https.onCall((data, context) => {
-//   const uid = context.auth.uid || null;
-//   if (uid == null) {
-//     return;
-//   }
-
-// });
 
 exports.createDriftBottle = functions.https.onCall((data, context) => {
   const driftBottle = {};
