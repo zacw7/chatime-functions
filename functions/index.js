@@ -11,6 +11,69 @@ db.settings({ignoreUndefinedProperties: true});
 // Create and Deploy Your First Cloud Functions
 // https://firebase.google.com/docs/functions/write-firebase-functions
 
+exports.addUserRecord = functions.auth.user().onCreate((user) => {
+  const record = {
+    uid: user.uid,
+    about: "",
+    scores: 0,
+    rooms: [],
+    createdAt: admin.firestore.Timestamp.now(),
+  };
+  // insert record to db
+  db.collection("users").doc(record.uid).set(record);
+});
+
+exports.updateProfile = functions.https.onCall((data, context) => {
+  const uid = context.auth.uid || null;
+  const username = data.username || null;
+  const about = data.about || null;
+
+  if (uid == null) {
+    return;
+  }
+
+  // update profile
+  admin
+      .auth()
+      .updateUser(uid, {
+        displayName: username,
+      });
+
+  db.collection("users").doc(uid).update({about: about});
+});
+
+exports.getProfile = functions.https.onCall((data, context) => {
+  const uid = context.auth.uid || null;
+  if (uid == null) {
+    return;
+  }
+  const user = {uid: uid};
+  return admin
+      .auth()
+      .getUser(uid)
+      .then((userAuth) => {
+        user.email = userAuth.email;
+        user.displayName = userAuth.displayName;
+        user.photoUrl = userAuth.photoURL;
+        return db.collection("users").doc(uid).get().then((doc) => {
+          const userDb = doc.data();
+          user.about = userDb.about;
+          user.scores = userDb.scores;
+          functions.logger.info("return user: ", user);
+          return user;
+        });
+      });
+});
+
+
+// exports.fetchDriftBottle = functions.https.onCall((data, context) => {
+//   const uid = context.auth.uid || null;
+//   if (uid == null) {
+//     return;
+//   }
+
+// });
+
 exports.createDriftBottle = functions.https.onCall((data, context) => {
   const driftBottle = {};
   driftBottle.creatorUid = context.auth.uid || null;
@@ -135,4 +198,3 @@ exports.unsubscribeTopic = functions.https.onCall((data, context) => {
     candidates.delete(topic);
   }
 });
-
