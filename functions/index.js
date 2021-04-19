@@ -11,6 +11,19 @@ db.settings({ignoreUndefinedProperties: true});
 // Create and Deploy Your First Cloud Functions
 // https://firebase.google.com/docs/functions/write-firebase-functions
 
+exports.dailyCheckIn = functions.https.onCall((data, context) => {
+  const uid = context.auth.uid || null;
+  if (uid == null) {
+    return;
+  }
+  return db.collection("users")
+      .doc(uid)
+      .update({
+        hasCheckedIn: true,
+        points: admin.firestore.FieldValue.increment(30),
+      });
+});
+
 exports.throwBackDriftBottle = functions.https.onCall((data, context) => {
   const uid = context.auth.uid || null;
   const bottleId = data.bottleId || null;
