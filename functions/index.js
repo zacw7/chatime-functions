@@ -85,7 +85,7 @@ exports.addUserRecord = functions.auth.user().onCreate((user) => {
   const record = {
     uid: user.uid,
     about: "",
-    scores: 0,
+    points: 0,
     rooms: [],
     createdAt: admin.firestore.Timestamp.now(),
   };
@@ -130,7 +130,7 @@ exports.getProfile = functions.https.onCall((data, context) => {
             .then((doc) => {
               const userDb = doc.data();
               user.about = userDb.about;
-              user.scores = userDb.scores;
+              user.points = userDb.points;
               functions.logger.info("return user: ", user);
               return user;
             });
@@ -160,7 +160,7 @@ exports.createDriftBottle = functions.https.onCall((data, context) => {
     return;
   }
   return db.collection("users").doc(driftBottle.creatorUid).update({
-    scores: admin.firestore.FieldValue.increment(30),
+    points: admin.firestore.FieldValue.increment(30),
   }).then(() => {
     return admin
         .auth()
