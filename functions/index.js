@@ -145,6 +145,7 @@ exports.getProfile = functions.https.onCall((data, context) => {
               const userDb = doc.data();
               user.about = userDb.about;
               user.points = userDb.points;
+              user.checkedIn = userDb.checkedIn;
               functions.logger.info("return user: ", user);
               return user;
             });
