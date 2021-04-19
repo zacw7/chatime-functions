@@ -19,8 +19,8 @@ exports.dailyCheckIn = functions.https.onCall((data, context) => {
   return db.collection("users")
       .doc(uid)
       .update({
-        hasCheckedIn: true,
-        points: admin.firestore.FieldValue.increment(30),
+        checkedIn: true,
+        points: admin.firestore.FieldValue.increment(10),
       });
 });
 
@@ -100,6 +100,7 @@ exports.addUserRecord = functions.auth.user().onCreate((user) => {
     about: "",
     points: 0,
     rooms: [],
+    checkedIn: false,
     createdAt: admin.firestore.Timestamp.now(),
   };
   // insert record to db
