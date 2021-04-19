@@ -11,6 +11,33 @@ db.settings({ignoreUndefinedProperties: true});
 // Create and Deploy Your First Cloud Functions
 // https://firebase.google.com/docs/functions/write-firebase-functions
 
+exports.throwBackDriftBottle = functions.https.onCall((data, context) => {
+  const uid = context.auth.uid || null;
+  const bottleId = data.bottleId || null;
+  if (uid == null || bottleId == null) {
+    return;
+  }
+
+  const path = "users/" + uid + "/bottles";
+
+  return db.collection(path).doc(bottleId).get().then((doc) => {
+    if (doc.exists) {
+      const bottle = doc.data();
+      delete bottle.pickedAt;
+      db.collection("bottles")
+          .doc(bottleId)
+          .set(bottle);
+      return db.collection(path)
+          .doc(bottleId)
+          .delete();
+    } else {
+      functions.logger.warn("Bottle doesn't exist under user ", uid);
+    }
+  }).catch((error) => {
+    functions.logger.error(error);
+  });
+});
+
 exports.fetchDriftBottle = functions.https.onCall((data, context) => {
   const uid = context.auth.uid || null;
   if (uid == null) {
@@ -41,6 +68,7 @@ exports.fetchDriftBottle = functions.https.onCall((data, context) => {
             .then(() => {
               // add to user
               const path = "users/" + uid + "/bottles";
+              bottle.pickedAt = admin.firestore.Timestamp.now();
               return db
                   .collection(path)
                   .doc(bottleId)
