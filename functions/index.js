@@ -210,17 +210,20 @@ exports.sendMessage = functions.https.onCall((data, context) => {
 
   const path = "rooms/" + roomId + "/messages";
   functions.logger.info("Message Path:" + path, {structuredData: true});
+  const ts = admin.firestore.Timestamp.now();
   return db
       .collection(path)
       .add({
         from: from,
         to: to,
         content: content,
-        timestamp: admin.firestore.Timestamp.now(),
+        timestamp: ts,
       })
-      .then((res) => {
-        functions.logger.info("Added message with ID: ", res.id);
-      // TODO - send notification
+      .then(() => {
+        db.collection("rooms").doc(roomId).update({
+          lastMessageTime: ts,
+        });
+        // TODO - send notification
       });
 });
 
