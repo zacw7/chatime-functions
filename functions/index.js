@@ -224,14 +224,85 @@ exports.sendMessage = functions.https.onCall((data, context) => {
       });
 });
 
+exports.getRoomList = functions.https.onCall((data, context) => {
+  const uid = context.auth.uid || null;
+  const username = context.auth.token.username || null;
+  if (uid == null) {
+    return;
+  }
+
+  return db
+      .collection("rooms")
+      .where("members", "array-contains", uid)
+      .get()
+      .then((querySnapshot) => {
+        const rooms = [];
+        querySnapshot.forEach((doc) => {
+          const room = doc.data();
+          room.id = doc.id;
+          room.members.forEach((member) => {
+            if (member !== uid) {
+              room.recipientUid = member;
+            }
+          });
+          delete room.members;
+          if (room.memberNames) {
+            room.memberNames.forEach((name) => {
+              if (username !== name) {
+                room.recipientUsername = name;
+              }
+            });
+            delete room.memberNames;
+          }
+          rooms.push(room);
+        });
+        functions.logger.info("RoomList: ", rooms);
+        return rooms;
+      });
+});
+
+exports.getRoomInfo = functions.https.onCall((data, context) => {
+  const uid = context.auth.uid || null;
+  const username = context.auth.token.username || null;
+  const roomId = data.roomId || null;
+  if (uid == null || roomId == null) {
+    return;
+  }
+
+  return db.collection("rooms").doc(roomId).get().then((doc) => {
+    if (doc.exists) {
+      const room = doc.data();
+      room.id = doc.id;
+      functions.logger.info("Get room: ", room);
+      let rUid;
+      room.members.forEach((member) => {
+        if (member !== uid) {
+          rUid = member;
+        }
+      });
+      room.recipientUid = rUid;
+      delete room.members;
+      return admin
+          .auth()
+          .getUser(rUid)
+          .then((userRecord) => {
+            room.recipientUsername = userRecord.displayName;
+
+            db.collection("rooms").doc(roomId).update({
+              memberNames: [username, room.recipientUsername],
+            });
+            delete room.memberNames;
+            return room;
+          });
+    }
+  });
+});
+
 exports.subscribeTopic = functions.https.onCall((data, context) => {
   // Topic passed from the client.
   const topic = data.topic;
   // Authentication / user information is automatically added to the request.
   const uid = context.auth.uid;
-  const name = context.auth.token.name || null;
-  const picture = context.auth.token.picture || null;
-  const email = context.auth.token.email || null;
 
   functions.logger.info("uid: " + uid + " ---> " + topic);
 
@@ -257,20 +328,8 @@ exports.subscribeTopic = functions.https.onCall((data, context) => {
           db.collection("rooms")
               .add({
                 topic: topic,
-                members: [
-                  {
-                    uid: uid,
-                    username: name,
-                    email: email,
-                    pictureUrl: picture,
-                  },
-                  {
-                    uid: ruid,
-                    username: userRecord.displayName,
-                    email: userRecord.email,
-                    pictureUrl: userRecord.photoURL,
-                  },
-                ],
+                members: [uid, ruid],
+                createdAt: admin.firestore.Timestamp.now(),
               })
               .then((docRef) => {
                 const topicCondition =
