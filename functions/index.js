@@ -12,6 +12,36 @@ db.settings({ignoreUndefinedProperties: true});
 // Create and Deploy Your First Cloud Functions
 // https://firebase.google.com/docs/functions/write-firebase-functions
 
+exports.messageToCreator = functions.https.onCall((data, context) => {
+  const uid = context.auth.uid || null;
+  const username = context.auth.token.name || null;
+  const bottleId = data.bottleId;
+  if (uid == null || bottleId == null) {
+    return;
+  }
+  const path = "users/" + uid + "/bottles";
+  return db.collection(path).doc(bottleId).get().then((doc) => {
+    if (doc.exists) {
+      const bottle = doc.data();
+      return db.collection("rooms")
+          .add({
+            topic: "#DEFAULT_TOPIC#",
+            members: [uid, bottle.creatorUid],
+            memberNames: [username, bottle.creatorUsername],
+            createdAt: admin.firestore.Timestamp.now(),
+          })
+          .then((doc) => {
+            db.collection(path)
+                .doc(bottleId)
+                .update({
+                  roomId: doc.id,
+                });
+            return doc.id;
+          });
+    }
+  });
+});
+
 exports.dailyCheckIn = functions.https.onCall((data, context) => {
   const uid = context.auth.uid || null;
   if (uid == null) {
@@ -38,6 +68,9 @@ exports.throwBackDriftBottle = functions.https.onCall((data, context) => {
     if (doc.exists) {
       const bottle = doc.data();
       delete bottle.pickedAt;
+      if (bottle.roomId) {
+        delete bottle.roomId;
+      }
       db.collection("bottles")
           .doc(bottleId)
           .set(bottle);
@@ -278,17 +311,17 @@ exports.getRoomInfo = functions.https.onCall((data, context) => {
       const room = doc.data();
       room.id = doc.id;
       functions.logger.info("Get room: ", room);
-      let rUid;
+      let ruid;
       room.members.forEach((member) => {
         if (member !== uid) {
-          rUid = member;
+          ruid = member;
         }
       });
-      room.recipientUid = rUid;
+      room.recipientUid = ruid;
       delete room.members;
       return admin
           .auth()
-          .getUser(rUid)
+          .getUser(ruid)
           .then((userRecord) => {
             room.recipientUsername = userRecord.displayName;
 
@@ -304,9 +337,13 @@ exports.getRoomInfo = functions.https.onCall((data, context) => {
 
 exports.subscribeTopic = functions.https.onCall((data, context) => {
   // Topic passed from the client.
-  const topic = data.topic;
+  let topic = data.topic || null;
   // Authentication / user information is automatically added to the request.
   const uid = context.auth.uid;
+
+  if (topic == null) {
+    topic = "#DEFAULT_TOPIC#";
+  }
 
   functions.logger.info("uid: " + uid + " ---> " + topic);
   topics.set(uid, topic);
