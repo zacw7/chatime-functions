@@ -5,6 +5,7 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
 const candidates = new Map();
+const topics = new Map();
 
 db.settings({ignoreUndefinedProperties: true});
 
@@ -308,7 +309,7 @@ exports.subscribeTopic = functions.https.onCall((data, context) => {
   const uid = context.auth.uid;
 
   functions.logger.info("uid: " + uid + " ---> " + topic);
-
+  topics.set(uid, topic);
   if (
     !candidates.has(topic) ||
     candidates.get(topic).uid === uid ||
@@ -351,10 +352,8 @@ exports.subscribeTopic = functions.https.onCall((data, context) => {
 });
 
 exports.unsubscribeTopic = functions.https.onCall((data, context) => {
-  // Topic passed from the client.
-  const topic = data.topic;
-  // Authentication / user information is automatically added to the request.
   const uid = context.auth.uid;
+  const topic = topics.get(uid);
   functions.logger.info("uid: " + uid + " -x-> " + topic);
   if (candidates.has(topic) && candidates.has(topic) === uid) {
     candidates.delete(topic);
